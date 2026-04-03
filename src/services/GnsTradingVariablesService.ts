@@ -157,6 +157,20 @@ export class GnsTradingVariablesService implements OnModuleInit {
     return pnlContext;
   }
 
+  public getAllPairs(chain: Chains) {
+    const tv = this.tradingVariablesByChain.get(chain);
+
+    if (!tv) return [];
+
+    const pairs = tv.globalTradingVariables.pairs ?? [];
+
+    return pairs.filter((p) => {
+      const leverage =
+        tv.globalTradingVariables?.pairMaxLeverages![p.pairIndex];
+      return leverage !== 0.001;
+    });
+  }
+
   public getPair(chain: Chains, index: number) {
     const tv = this.tradingVariablesByChain.get(chain);
     if (!tv) return undefined;
