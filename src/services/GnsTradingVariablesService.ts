@@ -2,10 +2,19 @@ import axios from 'axios';
 import { Chains } from 'src/models/chains';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
+  buildComprehensivePnlContext,
+  buildLiquidationPriceContext,
+  GetComprehensivePnlContext,
+  GetLiquidationPriceContext,
   GlobalTradingVariablesBackend,
+  TradeContainer,
   TradeContainerBackend,
+  TradeType,
+  TransformedGlobalTrades,
   TransformedGlobalTradingVariables,
+  transformGlobalTrades,
   transformGlobalTradingVariables,
+  UserPriceImpact,
 } from '@gainsnetwork/sdk';
 
 const urlMap = new Map([
@@ -20,12 +29,14 @@ export class GnsTradingVariablesService implements OnModuleInit {
   private readonly tradingVariablesUrl: string = 'trading-variables/all';
   private readonly openTradesUrl: string = 'open-trades';
 
-  private tradingVariablesBackend: GlobalTradingVariablesBackend =
-    {} as GlobalTradingVariablesBackend;
-
-  private tradingVariables: TransformedGlobalTradingVariables =
-    {} as TransformedGlobalTradingVariables;
-
+  private tradingVariablesBackendByChain: Map<
+    Chains,
+    GlobalTradingVariablesBackend
+  > = new Map();
+  private tradingVariablesByChain: Map<
+    Chains,
+    TransformedGlobalTradingVariables
+  > = new Map();
   private tradesByChain: Map<Chains, TradeContainerBackend[]> = new Map();
 
   async onModuleInit() {
@@ -41,6 +52,117 @@ export class GnsTradingVariablesService implements OnModuleInit {
     this.logger.log('Initialized trading variables and trades for all chains');
   }
 
+  public getAllTraderPositions(
+    chain: Chains,
+    trader: string,
+  ): TradeContainer[] {
+    const tv = this.tradingVariablesByChain.get(chain);
+    if (!tv) return [];
+
+    const { pairs, collaterals } = tv.globalTradingVariables;
+
+    if (!pairs) return [];
+
+    const tradesByChain = this.tradesByChain.get(chain);
+
+    if (!tradesByChain) return [];
+
+    const transformedTradesForTrader = transformGlobalTrades(
+      tradesByChain,
+      pairs,
+      trader,
+      collaterals,
+    );
+
+    if (!transformedTradesForTrader) return [];
+
+    const trades: TradeContainer[] = [];
+
+    for (const [_, tradeMap] of transformedTradesForTrader.trades) {
+      for (const [_, trade] of tradeMap) {
+        trades.push(trade);
+      }
+    }
+    return trades;
+  }
+
+  public getLiquidationPriceContext(
+    chain: Chains,
+    {
+      tradeContainer,
+      currentPairPrice,
+      beforeOpened = false,
+      additionalFeeCollateral = 0,
+      userPriceImpact,
+    }: {
+      tradeContainer: TradeContainer;
+      currentPairPrice: number;
+      beforeOpened?: boolean;
+      additionalFeeCollateral?: number;
+      userPriceImpact?: UserPriceImpact;
+    },
+  ): GetLiquidationPriceContext | undefined {
+    const tv = this.tradingVariablesByChain.get(chain);
+    if (!tv) return undefined;
+
+    const { globalTradingVariables, blockNumber } = tv;
+    const pair = this.getPair(chain, tradeContainer.trade.pairIndex);
+    if (!pair) return undefined;
+
+    const liquidationContext = buildLiquidationPriceContext(
+      globalTradingVariables,
+      tradeContainer,
+      {
+        currentBlock: blockNumber!,
+        currentTimestamp: Math.floor(Date.now() / 1000),
+        currentPairPrice,
+        spreadP: pair.spreadP,
+        beforeOpened,
+        additionalFeeCollateral,
+        userPriceImpact,
+      },
+    );
+
+    return liquidationContext;
+  }
+
+  public getPnlContext(
+    chain: Chains,
+    tradeContainer: TradeContainer,
+  ): GetComprehensivePnlContext | undefined {
+    const tradingVariables = this.tradingVariablesByChain.get(chain);
+
+    if (!tradingVariables) {
+      this.logger.log(`Trading variables not found in getPnlContext`);
+      return;
+    }
+
+    const { globalTradingVariables, blockNumber } = tradingVariables;
+
+    if (!blockNumber) {
+      this.logger.log(`blockNumber not found in getPnlContext`);
+      return;
+    }
+
+    const pnlContext = buildComprehensivePnlContext(
+      globalTradingVariables,
+      tradeContainer,
+      {
+        currentBlock: blockNumber,
+        currentTimestamp: Math.floor(Date.now() / 1000),
+        traderFeeMultiplier: 1,
+      },
+    );
+
+    return pnlContext;
+  }
+
+  public getPair(chain: Chains, index: number) {
+    const tv = this.tradingVariablesByChain.get(chain);
+    if (!tv) return undefined;
+    return tv.globalTradingVariables.pairs?.[index];
+  }
+
   private async refreshTradingVariables(
     chain: Chains,
     newTradingVariables?: GlobalTradingVariablesBackend,
@@ -50,27 +172,33 @@ export class GnsTradingVariablesService implements OnModuleInit {
     );
 
     try {
+      let backend =
+        this.tradingVariablesBackendByChain.get(chain) ??
+        ({} as GlobalTradingVariablesBackend);
+
       if (newTradingVariables) {
         Object.entries(newTradingVariables).forEach(([key, value]) => {
-          if (key in this.tradingVariablesBackend) {
-            this.tradingVariablesBackend[key] = value;
+          if (key in backend) {
+            backend[key] = value;
           }
         });
       } else {
-        const tradingVariables = await this.fetchTradingVariables(chain);
+        const fetched = await this.fetchTradingVariables(chain);
 
-        if (!tradingVariables) {
+        if (!fetched) {
           this.logger.error(
             `[REFRESH_TRADING_VARIABLES | ${chain}] No trading variables returned from GNS API`,
           );
           return;
         }
 
-        this.tradingVariablesBackend = tradingVariables;
+        backend = fetched;
       }
 
-      this.tradingVariables = transformGlobalTradingVariables(
-        this.tradingVariablesBackend,
+      this.tradingVariablesBackendByChain.set(chain, backend);
+      this.tradingVariablesByChain.set(
+        chain,
+        transformGlobalTradingVariables(backend),
       );
     } catch (error) {
       this.logger.error(
@@ -90,15 +218,6 @@ export class GnsTradingVariablesService implements OnModuleInit {
       .catch((error) => {
         this.handleAxiosError('Error fetching open trades', error);
       });
-  }
-
-  public getTradesByAddress(
-    chain: Chains,
-    address: string,
-  ): TradeContainerBackend[] {
-    const trades = this.tradesByChain.get(chain) ?? [];
-    const normalized = address.toLowerCase();
-    return trades.filter((t) => t.trade.user.toLowerCase() === normalized);
   }
 
   private async fetchTradingVariables(
