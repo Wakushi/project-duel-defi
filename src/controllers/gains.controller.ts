@@ -3,9 +3,7 @@ import { GnsPriceFeedListenerService } from '../services/GnsPriceFeedListenerSer
 
 @Controller('gains')
 export class GainsController {
-  constructor(
-    private readonly priceFeedService: GnsPriceFeedListenerService,
-  ) {}
+  constructor(private readonly priceFeedService: GnsPriceFeedListenerService) {}
 
   @Get('price/:pairIndex')
   getPairPrice(@Param('pairIndex', ParseIntPipe) pairIndex: number) {
