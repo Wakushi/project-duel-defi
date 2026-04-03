@@ -1,13 +1,13 @@
 import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { Chains } from '../models/chains';
 import { GnsPriceFeedListenerService } from '../services/GnsPriceFeedListenerService';
-import { GnsTradingVariablesService } from '../services/GnsTradingVariablesService';
+import { GnsPositionService } from '../services/GnsPositionService';
 
 @Controller('gains')
 export class GainsController {
   constructor(
     private readonly priceFeedService: GnsPriceFeedListenerService,
-    private readonly tradingVariablesService: GnsTradingVariablesService,
+    private readonly positionService: GnsPositionService,
   ) {}
 
   @Get('price/:pairIndex')
@@ -20,6 +20,11 @@ export class GainsController {
     @Param('address') address: string,
     @Query('chain') chain: Chains,
   ) {
-    return this.tradingVariablesService.getTradesByAddress(chain, address);
+    const positions = this.positionService.getPositions({
+      chain,
+      user: address,
+    });
+
+    return positions;
   }
 }

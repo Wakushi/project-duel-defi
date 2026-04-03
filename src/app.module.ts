@@ -3,11 +3,12 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GainsController } from './controllers/gains.controller';
 import { GnsPriceFeedListenerService } from './services/GnsPriceFeedListenerService';
+import { GnsPositionService } from './services/GnsPositionService';
 import { GnsTradingVariablesService } from './services/GnsTradingVariablesService';
 
 @Module({
   imports: [],
   controllers: [AppController, GainsController],
-  providers: [AppService, GnsPriceFeedListenerService, GnsTradingVariablesService],
+  providers: [AppService, GnsPriceFeedListenerService, GnsPositionService, GnsTradingVariablesService],
 })
 export class AppModule {}
