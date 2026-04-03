@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Chains } from 'src/models/chains';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   GlobalTradingVariablesBackend,
   TradeContainerBackend,
@@ -15,7 +15,7 @@ const urlMap = new Map([
 ]);
 
 @Injectable()
-export class GnsTradingVariablesService {
+export class GnsTradingVariablesService implements OnModuleInit {
   private readonly logger = new Logger(GnsTradingVariablesService.name);
   private readonly tradingVariablesUrl: string = 'trading-variables/all';
   private readonly openTradesUrl: string = 'open-trades';
@@ -26,11 +26,22 @@ export class GnsTradingVariablesService {
   private tradingVariables: TransformedGlobalTradingVariables =
     {} as TransformedGlobalTradingVariables;
 
-  private allTrades: TradeContainerBackend[] = [];
+  private tradesByChain: Map<Chains, TradeContainerBackend[]> = new Map();
 
-  private isRefreshingTrades = false;
+  async onModuleInit() {
+    const chains = Object.values(Chains);
 
-  public async refreshTradingVariables(
+    await Promise.all(
+      chains.flatMap((chain) => [
+        this.refreshTradingVariables(chain),
+        this.refreshTrades(chain),
+      ]),
+    );
+
+    this.logger.log('Initialized trading variables and trades for all chains');
+  }
+
+  private async refreshTradingVariables(
     chain: Chains,
     newTradingVariables?: GlobalTradingVariablesBackend,
   ): Promise<void> {
@@ -68,31 +79,33 @@ export class GnsTradingVariablesService {
     }
   }
 
-  public async refreshTrades(chain: Chains): Promise<void> {
-    if (this.isRefreshingTrades) return;
-
-    this.isRefreshingTrades = true;
-
+  private async refreshTrades(chain: Chains): Promise<void> {
     this.fetchOpenTrades(chain)
       .then((trades) => {
-        this.allTrades = trades;
+        this.tradesByChain.set(chain, trades);
         this.logger.log(
-          `[REFRESH_TRADES | ${chain}] 🟢 Refreshed ${this.allTrades.length} trades`,
+          `[REFRESH_TRADES | ${chain}] Refreshed ${trades.length} trades`,
         );
       })
       .catch((error) => {
         this.handleAxiosError('Error fetching open trades', error);
-      })
-      .finally(() => {
-        this.isRefreshingTrades = false;
       });
+  }
+
+  public getTradesByAddress(
+    chain: Chains,
+    address: string,
+  ): TradeContainerBackend[] {
+    const trades = this.tradesByChain.get(chain) ?? [];
+    const normalized = address.toLowerCase();
+    return trades.filter((t) => t.trade.user.toLowerCase() === normalized);
   }
 
   private async fetchTradingVariables(
     chain: Chains,
   ): Promise<GlobalTradingVariablesBackend | undefined> {
     try {
-      const url = urlMap[chain];
+      const url = urlMap.get(chain);
 
       const response = await this.makeAxiosRequest(
         url + this.tradingVariablesUrl,
@@ -108,7 +121,7 @@ export class GnsTradingVariablesService {
     chain: Chains,
   ): Promise<TradeContainerBackend[]> {
     try {
-      const url = urlMap[chain];
+      const url = urlMap.get(chain);
 
       const response = await this.makeAxiosRequest(url + this.openTradesUrl);
 
