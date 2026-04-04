@@ -114,7 +114,7 @@ export class GainsController {
           feeIndex: pair.feeIndex,
           spreadP: pair.spreadP,
           price: priceData ?? null,
-          price24hAgo: price24hAgo ?? null,
+          price24hAgo: metadata?.price_change_24h ?? 0,
           percentChange,
           logo: metadata?.logo ?? null,
           marketCap: metadata?.market_cap ?? 0,
