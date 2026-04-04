@@ -65,8 +65,22 @@ export class PositionsGateway
       return;
     }
 
-    const startedAt = Date.now();
     const durationSeconds = duel.duration_seconds;
+
+    if (!duel.ready_both_at) {
+      client.send(
+        JSON.stringify({
+          event: 'error',
+          data: `Duel ${duelId} has not started yet`,
+        }),
+      );
+      return;
+    }
+
+    const STARTING_DUEL_COUNT = 3;
+
+    const startedAt =
+      new Date(duel.ready_both_at).getTime() + STARTING_DUEL_COUNT;
 
     // Send initial data immediately
     await this.sendDuelData(client, duelId, durationSeconds, startedAt);

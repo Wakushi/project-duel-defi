@@ -7,7 +7,10 @@ import {
 import WebSocket from 'ws';
 import { Chains } from '../models/chains.js';
 import { GnsTradingVariablesService } from './GnsTradingVariablesService.js';
-import { TradeContainerBackend } from '@gainsnetwork/sdk';
+import {
+  GlobalTradingVariablesBackend,
+  TradeContainerBackend,
+} from '@gainsnetwork/sdk';
 
 const wsUrlMap = new Map<Chains, string>([
   [Chains.Base, 'wss://backend-base.gains.trade'],
@@ -105,6 +108,102 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
         if (!msg.value?.trade) return;
         const tc = msg.value as TradeContainerBackend;
         this.tradingVariablesService.createOrUpdateTrade(chain, tc);
+        break;
+      }
+
+      case 'tradingVariables': {
+        const tradingVariables = msg.value as GlobalTradingVariablesBackend;
+        this.logger.log(`[${chain}] Received tradingVariables event`);
+        this.tradingVariablesService.refreshTradingVariablesFromWs(
+          chain,
+          tradingVariables,
+        );
+        break;
+      }
+
+      case 'currentBlock':
+        this.tradingVariablesService.updateCurrentBlock(chain, msg.value);
+        break;
+
+      case 'currentL1Block':
+        this.tradingVariablesService.updateCurrentL1Block(chain, msg.value);
+        break;
+
+      case 'accBorrowingFeesPairUpdated': {
+        const { collateralIndex, pairIndex, pairBorrowingFees } = msg.value;
+        this.tradingVariablesService.updatePairAccBorrowingFee(chain, {
+          collateralIndex: Number.parseInt(collateralIndex, 10),
+          pairIndex: Number.parseInt(pairIndex, 10),
+          pairBorrowingFees,
+        });
+        break;
+      }
+
+      case 'accBorrowingFeesGroupUpdated': {
+        const { collateralIndex, groupIndex, groupBorrowingFees } = msg.value;
+        this.tradingVariablesService.updateGroupAccBorrowingFee(chain, {
+          collateralIndex: Number.parseInt(collateralIndex, 10),
+          groupIndex: Number.parseInt(groupIndex, 10),
+          groupBorrowingFees,
+        });
+        break;
+      }
+
+      case 'borrowingPairFeePerBlockCapUpdated':
+        this.tradingVariablesService.updateBorrowingPairFeePerBlockCap(chain, {
+          collateralIndex: Number.parseInt(msg.value.collateralIndex, 10),
+          pairIndex: Number.parseInt(msg.value.pairIndex, 10),
+          borrowingPairFeePerBlockCap: {
+            minP: msg.value.borrowingFeePerBlockCap.minP,
+            maxP: msg.value.borrowingFeePerBlockCap.maxP,
+          },
+        });
+        break;
+
+      case 'openInterestGroupUpdated':
+        this.tradingVariablesService.updateOpenInterestGroup(chain, {
+          collateralIndex: Number.parseInt(msg.value.collateralIndex, 10),
+          groupIndex: Number.parseInt(msg.value.groupIndex, 10),
+          groupBorrowingFees: {
+            oiLong: msg.value.groupBorrowingFees.oiLong,
+            oiShort: msg.value.groupBorrowingFees.oiShort,
+          },
+        });
+        break;
+
+      case 'openInterestPairUpdated':
+        this.tradingVariablesService.updateOpenInterestPair(chain, {
+          collateralIndex: Number.parseInt(msg.value.collateralIndex, 10),
+          pairIndex: Number.parseInt(msg.value.pairIndex, 10),
+          pairOi: msg.value.pairBorrowingFees,
+        });
+        break;
+
+      case 'pendingAccFundingFeesStored':
+        this.tradingVariablesService.updatePendingAccFundingFees(chain, {
+          collateralIndex: Number.parseInt(msg.value.collateralIndex, 10),
+          pairIndex: Number.parseInt(msg.value.pairIndex, 10),
+          pairData: msg.value.pairData,
+        });
+        break;
+
+      case 'pendingAccBorrowingFeesStored':
+        this.tradingVariablesService.updatePendingAccBorrowingFees(chain, {
+          collateralIndex: Number.parseInt(msg.value.collateralIndex, 10),
+          pairIndex: Number.parseInt(msg.value.pairIndex, 10),
+          pairData: msg.value.pairData,
+        });
+        break;
+
+      case 'oiWindowUpdated': {
+        const { windowId, newOi } = msg.value;
+        this.tradingVariablesService.updateWindowOi(chain, {
+          windowId: Number.parseInt(windowId, 10),
+          newOi: {
+            oiLongUsd: newOi.oiLongUsd || 0,
+            oiShortUsd: newOi.oiShortUsd || 0,
+          },
+        });
         break;
       }
 

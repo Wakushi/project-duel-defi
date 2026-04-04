@@ -260,6 +260,287 @@ export class GnsTradingVariablesService implements OnModuleInit {
     return tv.globalTradingVariables.pairs?.[index];
   }
 
+  // ─── Trading-variables event handlers ────────────────────────────────
+
+  public refreshTradingVariablesFromWs(
+    chain: Chains,
+    tradingVariables: GlobalTradingVariablesBackend,
+  ): void {
+    this.refreshTradingVariables(chain, tradingVariables);
+  }
+
+  public updateCurrentBlock(chain: Chains, block: number): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+    backend.currentBlock = block;
+
+    const tv = this.tradingVariablesByChain.get(chain);
+    if (tv) tv.blockNumber = block;
+  }
+
+  public updateCurrentL1Block(chain: Chains, block: number): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+    backend.currentL1Block = block;
+
+    const tv = this.tradingVariablesByChain.get(chain);
+    if (tv) tv.l1BlockNumber = block;
+  }
+
+  public updatePairAccBorrowingFee(
+    chain: Chains,
+    {
+      collateralIndex,
+      pairIndex,
+      pairBorrowingFees,
+    }: {
+      collateralIndex: number;
+      pairIndex: number;
+      pairBorrowingFees: {
+        accFeeLong: string;
+        accFeeShort: string;
+        accLastUpdatedBlock: number;
+      };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const pair =
+      backend.collaterals[collateralIndex - 1]?.borrowingFees.v1.pairs[
+        pairIndex
+      ];
+    if (!pair) return;
+
+    pair.accFeeLong = pairBorrowingFees.accFeeLong;
+    pair.accFeeShort = pairBorrowingFees.accFeeShort;
+    pair.accLastUpdatedBlock =
+      pairBorrowingFees.accLastUpdatedBlock.toString();
+
+    this.retransform(chain, backend);
+  }
+
+  public updateGroupAccBorrowingFee(
+    chain: Chains,
+    {
+      collateralIndex,
+      groupIndex,
+      groupBorrowingFees,
+    }: {
+      collateralIndex: number;
+      groupIndex: number;
+      groupBorrowingFees: {
+        accFeeLong: string;
+        accFeeShort: string;
+        accLastUpdatedBlock: number;
+      };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const group =
+      backend.collaterals[collateralIndex - 1]?.borrowingFees.v1.groups[
+        groupIndex
+      ];
+    if (!group) return;
+
+    group.accFeeLong = groupBorrowingFees.accFeeLong;
+    group.accFeeShort = groupBorrowingFees.accFeeShort;
+    group.accLastUpdatedBlock =
+      groupBorrowingFees.accLastUpdatedBlock.toString();
+
+    this.retransform(chain, backend);
+  }
+
+  public updateBorrowingPairFeePerBlockCap(
+    chain: Chains,
+    {
+      collateralIndex,
+      pairIndex,
+      borrowingPairFeePerBlockCap,
+    }: {
+      collateralIndex: number;
+      pairIndex: number;
+      borrowingPairFeePerBlockCap: { minP: string; maxP: string };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const pair =
+      backend.collaterals[collateralIndex - 1]?.borrowingFees.v1.pairs[
+        pairIndex
+      ];
+    if (!pair) return;
+
+    pair.feePerBlockCap = borrowingPairFeePerBlockCap;
+
+    this.retransform(chain, backend);
+  }
+
+  public updateOpenInterestGroup(
+    chain: Chains,
+    {
+      collateralIndex,
+      groupIndex,
+      groupBorrowingFees,
+    }: {
+      collateralIndex: number;
+      groupIndex: number;
+      groupBorrowingFees: { oiLong: string; oiShort: string };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const group =
+      backend.collaterals[collateralIndex - 1]?.borrowingFees.v1.groups[
+        groupIndex
+      ];
+    if (!group) return;
+
+    group.oi.long = groupBorrowingFees.oiLong;
+    group.oi.short = groupBorrowingFees.oiShort;
+
+    this.retransform(chain, backend);
+  }
+
+  public updateOpenInterestPair(
+    chain: Chains,
+    {
+      collateralIndex,
+      pairIndex,
+      pairOi,
+    }: {
+      collateralIndex: number;
+      pairIndex: number;
+      pairOi: any;
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const pair =
+      backend.collaterals[collateralIndex - 1]?.borrowingFees.v1.pairs[
+        pairIndex
+      ];
+    if (!pair) return;
+
+    pair.oi = pairOi;
+
+    this.retransform(chain, backend);
+  }
+
+  public updatePendingAccFundingFees(
+    chain: Chains,
+    {
+      collateralIndex,
+      pairIndex,
+      pairData,
+    }: {
+      collateralIndex: number;
+      pairIndex: number;
+      pairData: {
+        accFundingFeeLongP: string;
+        accFundingFeeShortP: string;
+        lastFundingRatePerSecondP: string;
+        lastFundingUpdateTs: string;
+      };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const fundingPairData =
+      backend.collaterals[collateralIndex - 1]?.fundingFees.pairData[
+        pairIndex
+      ];
+    if (!fundingPairData) return;
+
+    fundingPairData.accFundingFeeLongP = pairData.accFundingFeeLongP;
+    fundingPairData.accFundingFeeShortP = pairData.accFundingFeeShortP;
+    fundingPairData.lastFundingRatePerSecondP =
+      pairData.lastFundingRatePerSecondP;
+    fundingPairData.lastFundingUpdateTs = pairData.lastFundingUpdateTs;
+
+    this.retransform(chain, backend);
+  }
+
+  public updatePendingAccBorrowingFees(
+    chain: Chains,
+    {
+      collateralIndex,
+      pairIndex,
+      pairData,
+    }: {
+      collateralIndex: number;
+      pairIndex: number;
+      pairData: {
+        accBorrowingFeeP: string;
+        lastBorrowingUpdateTs: string;
+      };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const borrowingPairData =
+      backend.collaterals[collateralIndex - 1]?.borrowingFees.v2.pairData[
+        pairIndex
+      ];
+    if (!borrowingPairData) return;
+
+    borrowingPairData.accBorrowingFeeP = pairData.accBorrowingFeeP;
+    borrowingPairData.lastBorrowingUpdateTs = pairData.lastBorrowingUpdateTs;
+
+    this.retransform(chain, backend);
+  }
+
+  public updateWindowOi(
+    chain: Chains,
+    {
+      windowId,
+      newOi,
+    }: {
+      windowId: number;
+      newOi: { oiLongUsd: string | number; oiShortUsd: string | number };
+    },
+  ): void {
+    const backend = this.tradingVariablesBackendByChain.get(chain);
+    if (!backend) return;
+
+    const windowIndex = backend.oiWindows.findIndex((w) =>
+      Object.keys(w).includes(windowId.toString()),
+    );
+    if (windowIndex === -1) return;
+
+    const oiLongUsd =
+      typeof newOi.oiLongUsd === 'string'
+        ? newOi.oiLongUsd
+        : newOi.oiLongUsd.toString();
+    const oiShortUsd =
+      typeof newOi.oiShortUsd === 'string'
+        ? newOi.oiShortUsd
+        : newOi.oiShortUsd.toString();
+
+    backend.oiWindows[windowIndex][windowId] = { oiLongUsd, oiShortUsd };
+
+    this.retransform(chain, backend);
+  }
+
+  // ─── Private helpers ─────────────────────────────────────────────────
+
+  private retransform(
+    chain: Chains,
+    backend: GlobalTradingVariablesBackend,
+  ): void {
+    this.tradingVariablesByChain.set(
+      chain,
+      transformGlobalTradingVariables(backend),
+    );
+  }
+
   private async refreshTradingVariables(
     chain: Chains,
     newTradingVariables?: GlobalTradingVariablesBackend,
