@@ -71,15 +71,16 @@ export class DatabaseService implements OnModuleDestroy {
         : Promise.resolve(null),
     ]);
 
-    const chain = Chains.Testnet;
-
-    const users = [creator, opponent]
-      .filter((u) => u?.wallet_address)
-      .map((u) => ({
-        wallet: u!.wallet_address,
+    const users = [
+      { user: creator, chain: duel.creator_chain as Chains },
+      { user: opponent, chain: duel.opponent_chain as Chains },
+    ]
+      .filter((entry) => entry.user?.wallet_address && entry.chain)
+      .map((entry) => ({
+        wallet: entry.user!.wallet_address,
         positions: this.positionService.getPositions({
-          chain,
-          user: u!.wallet_address!,
+          chain: entry.chain,
+          user: entry.user!.wallet_address!,
         }),
       }));
 

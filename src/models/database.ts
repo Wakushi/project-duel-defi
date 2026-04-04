@@ -19,6 +19,8 @@ export interface DuelsTable {
   ready_both_at: Date | null;
   creator_trade_config: unknown | null;
   opponent_trade_config: unknown | null;
+  creator_chain: string;
+  opponent_chain: string | null;
   duel_live_at: Date | null;
   duel_closed_at: Date | null;
   created_at: Generated<Date>;
