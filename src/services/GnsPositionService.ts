@@ -26,9 +26,15 @@ export class GnsPositionService {
     chain: Chains;
     user: string;
   }): any | undefined {
+    const t0 = Date.now();
+
     const allUserTrades = this.gnsTradingVariablesService.getAllTraderPositions(
       chain,
       user,
+    );
+
+    this.logger.debug(
+      `getPositions: found ${allUserTrades.length} raw trades for ${user} on ${chain}`,
     );
 
     const enrichedTrades: any = [];
@@ -45,7 +51,9 @@ export class GnsPositionService {
         });
 
       if (!liqPriceContext) {
-        this.logger.error(`liqPriceContext is undefined`);
+        this.logger.error(
+          `liqPriceContext is undefined for pair ${tradeC.trade.pairIndex} user=${user} chain=${chain}`,
+        );
         return;
       }
 
@@ -56,7 +64,12 @@ export class GnsPositionService {
 
       const pnlResult = this.getPnl(chain, tradeC);
 
-      if (!pnlResult?.pnl) return;
+      if (!pnlResult?.pnl) {
+        this.logger.warn(
+          `No PnL result for pair ${tradeC.trade.pairIndex} index=${tradeC.trade.index} user=${user}`,
+        );
+        return;
+      }
 
       const { uPnlCollateral, uPnlPercent } = pnlResult.pnl;
 
@@ -91,6 +104,10 @@ export class GnsPositionService {
       enrichedTrades.push(enrichedTrade);
     });
 
+    this.logger.log(
+      `getPositions: user=${user} chain=${chain} -> ${enrichedTrades.length} enriched trades (${Date.now() - t0}ms)`,
+    );
+
     return enrichedTrades;
   }
 
@@ -106,7 +123,9 @@ export class GnsPositionService {
     );
 
     if (!pnlContext) {
-      this.logger.log(`pnlContext not found in getPnl`);
+      this.logger.warn(
+        `pnlContext not found for pair ${tradeContainer.trade.pairIndex} index=${tradeContainer.trade.index} chain=${chain}`,
+      );
       return;
     }
 
@@ -122,6 +141,10 @@ export class GnsPositionService {
       trade.openPrice,
       tradeInfo,
       pnlContext,
+    );
+
+    this.logger.debug(
+      `getPnl: pair=${tradeContainer.trade.pairIndex} pnl=${pnl.uPnlCollateral} pnl%=${pnl.uPnlPercent}`,
     );
 
     return { pnl, pnlContext };

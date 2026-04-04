@@ -56,16 +56,32 @@ export class GnsTradingVariablesService implements OnModuleInit {
     chain: Chains,
     trader: string,
   ): TradeContainer[] {
+    const t0 = Date.now();
     const tv = this.tradingVariablesByChain.get(chain);
-    if (!tv) return [];
+    if (!tv) {
+      this.logger.warn(
+        `getAllTraderPositions: no trading variables for chain=${chain}`,
+      );
+      return [];
+    }
 
     const { pairs, collaterals } = tv.globalTradingVariables;
 
-    if (!pairs) return [];
+    if (!pairs) {
+      this.logger.warn(
+        `getAllTraderPositions: no pairs for chain=${chain}`,
+      );
+      return [];
+    }
 
     const tradesByChain = this.tradesByChain.get(chain);
 
-    if (!tradesByChain) return [];
+    if (!tradesByChain) {
+      this.logger.warn(
+        `getAllTraderPositions: no trades loaded for chain=${chain}`,
+      );
+      return [];
+    }
 
     const transformedTradesForTrader = transformGlobalTrades(
       tradesByChain,
@@ -74,7 +90,12 @@ export class GnsTradingVariablesService implements OnModuleInit {
       collaterals,
     );
 
-    if (!transformedTradesForTrader) return [];
+    if (!transformedTradesForTrader) {
+      this.logger.debug(
+        `getAllTraderPositions: no trades found for trader=${trader} chain=${chain}`,
+      );
+      return [];
+    }
 
     const trades: TradeContainer[] = [];
 
@@ -83,6 +104,10 @@ export class GnsTradingVariablesService implements OnModuleInit {
         trades.push(trade);
       }
     }
+
+    this.logger.log(
+      `getAllTraderPositions: trader=${trader} chain=${chain} -> ${trades.length} trades (${Date.now() - t0}ms)`,
+    );
     return trades;
   }
 
@@ -158,17 +183,26 @@ export class GnsTradingVariablesService implements OnModuleInit {
   }
 
   public getAllPairs(chain: Chains) {
+    const t0 = Date.now();
     const tv = this.tradingVariablesByChain.get(chain);
 
-    if (!tv) return [];
+    if (!tv) {
+      this.logger.warn(`getAllPairs: no trading variables for chain=${chain}`);
+      return [];
+    }
 
     const pairs = tv.globalTradingVariables.pairs ?? [];
 
-    return pairs.filter((p) => {
+    const filtered = pairs.filter((p) => {
       const leverage =
         tv.globalTradingVariables?.pairMaxLeverages![p.pairIndex];
       return leverage !== 0.001;
     });
+
+    this.logger.log(
+      `getAllPairs: chain=${chain} -> ${filtered.length}/${pairs.length} active pairs (${Date.now() - t0}ms)`,
+    );
+    return filtered;
   }
 
   public getPair(chain: Chains, index: number) {

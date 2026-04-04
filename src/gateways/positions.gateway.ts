@@ -33,11 +33,16 @@ export class PositionsGateway
   constructor(private readonly positionService: GnsPositionService) {}
 
   handleConnection(client: WebSocket) {
-    this.logger.log('Client connected');
+    this.logger.log(
+      `WS client connected (active: ${this.subscriptions.size + 1})`,
+    );
   }
 
   handleDisconnect(client: WebSocket) {
-    this.logger.log('Client disconnected');
+    const sub = this.subscriptions.get(client);
+    this.logger.log(
+      `WS client disconnected${sub ? ` (user=${sub.user} chain=${sub.chain})` : ''}`,
+    );
     this.clearSubscription(client);
   }
 
@@ -49,7 +54,7 @@ export class PositionsGateway
     this.clearSubscription(client);
 
     const { chain, user } = data;
-    this.logger.log(`Client subscribed: ${user} on ${chain}`);
+    this.logger.log(`WS subscribe: user=${user} chain=${chain}`);
 
     this.sendPositions(client, chain, user);
 
@@ -63,7 +68,9 @@ export class PositionsGateway
 
     // Auto-disconnect after TTL
     const timeout = setTimeout(() => {
-      this.logger.log(`Subscription expired for ${user} on ${chain}`);
+      this.logger.log(
+        `WS subscription expired: user=${user} chain=${chain}`,
+      );
       client.send(
         JSON.stringify({ event: 'expired', data: 'Subscription TTL reached' }),
       );
@@ -76,14 +83,25 @@ export class PositionsGateway
 
   @SubscribeMessage('unsubscribe')
   handleUnsubscribe(@ConnectedSocket() client: WebSocket) {
+    const sub = this.subscriptions.get(client);
+    this.logger.log(
+      `WS unsubscribe${sub ? `: user=${sub.user} chain=${sub.chain}` : ''}`,
+    );
     this.clearSubscription(client);
   }
 
   private sendPositions(client: WebSocket, chain: Chains, user: string) {
+    const t0 = Date.now();
     try {
       const positions = this.positionService.getPositions({ chain, user });
       client.send(JSON.stringify({ event: 'positions', data: positions }));
+      this.logger.debug(
+        `WS positions sent: user=${user} chain=${chain} count=${positions.length} (${Date.now() - t0}ms)`,
+      );
     } catch (err) {
+      this.logger.error(
+        `WS sendPositions failed: user=${user} chain=${chain} (${Date.now() - t0}ms): ${err}`,
+      );
       client.send(
         JSON.stringify({
           event: 'error',

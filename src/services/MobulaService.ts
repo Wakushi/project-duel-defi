@@ -61,6 +61,7 @@ export class MobulaService {
   async getMultiData(
     symbols: string[],
   ): Promise<Record<string, MobulaAssetData>> {
+    const t0 = Date.now();
     const now = Date.now();
     const result: Record<string, MobulaAssetData> = {};
     const missingSymbols: string[] = [];
@@ -74,16 +75,35 @@ export class MobulaService {
       }
     }
 
+    const cacheHits = symbols.length - missingSymbols.length;
+    this.logger.log(
+      `getMultiData: ${symbols.length} symbols, ${cacheHits} cache hits, ${missingSymbols.length} to fetch`,
+    );
+
     if (missingSymbols.length > 0) {
+      this.logger.debug(
+        `getMultiData: fetching [${missingSymbols.join(', ')}]`,
+      );
       const fetched = await this.fetchWithRetry(missingSymbols);
       if (fetched) {
+        const fetchedKeys = Object.keys(fetched);
+        this.logger.log(
+          `getMultiData: fetched ${fetchedKeys.length}/${missingSymbols.length} symbols from API`,
+        );
         for (const [key, value] of Object.entries(fetched)) {
           this.cache.set(key, { data: value, expiry: now + this.cacheTtlMs });
           result[key] = value;
         }
+      } else {
+        this.logger.warn(
+          `getMultiData: fetch returned null for ${missingSymbols.length} symbols`,
+        );
       }
     }
 
+    this.logger.log(
+      `getMultiData: returning ${Object.keys(result).length} results (${Date.now() - t0}ms)`,
+    );
     return result;
   }
 
