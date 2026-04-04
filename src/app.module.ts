@@ -5,11 +5,20 @@ import { GainsController } from './controllers/gains.controller';
 import { GnsPriceFeedListenerService } from './services/GnsPriceFeedListenerService';
 import { GnsPositionService } from './services/GnsPositionService';
 import { GnsTradingVariablesService } from './services/GnsTradingVariablesService';
+import { MobulaService } from './services/MobulaService';
 import { PositionsGateway } from './gateways/positions.gateway';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [],
+  imports: [ConfigModule.forRoot()],
   controllers: [AppController, GainsController],
-  providers: [AppService, GnsPriceFeedListenerService, GnsPositionService, GnsTradingVariablesService, PositionsGateway],
+  providers: [
+    AppService,
+    GnsPriceFeedListenerService,
+    GnsPositionService,
+    GnsTradingVariablesService,
+    MobulaService,
+    PositionsGateway,
+  ],
 })
 export class AppModule {}
