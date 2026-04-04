@@ -65,6 +65,7 @@ export class PositionsGateway
       client.send(
         JSON.stringify({ event: 'error', data: `Duel ${duelId} not found` }),
       );
+      this.logger.log(`[ws:send] event=error duel=${duelId} reason=not_found`);
       return;
     }
 
@@ -78,24 +79,25 @@ export class PositionsGateway
           data: `Duel ${duelId} has not started yet`,
         }),
       );
+      this.logger.log(`[ws:send] event=error duel=${duelId} reason=not_started`);
       return;
     }
-
-    const STARTING_DUEL_COUNT = 3;
-
-    const startedAt =
-      new Date(duel.ready_both_at).getTime() + STARTING_DUEL_COUNT;
 
     const timeout = setTimeout(() => {
       this.logger.log(`[subscribe] Subscription TTL reached: duel=${duelId}`);
       client.send(
         JSON.stringify({ event: 'expired', data: 'Subscription TTL reached' }),
       );
+      this.logger.log(`[ws:send] event=expired duel=${duelId} reason=ttl_reached`);
       this.clearSubscription(client);
       client.close();
     }, this.subscriptionTtl);
 
     const alreadyLive = !!duel.duel_live_at;
+    // For reconnects use duel_live_at; for first start, startedAt will be set in notifyDuelStart
+    const startedAt = alreadyLive
+      ? new Date(duel.duel_live_at!).getTime()
+      : 0;
 
     const sub: DuelSubscription = {
       duelId,
@@ -154,9 +156,10 @@ export class PositionsGateway
         return;
       }
 
-      client.send(JSON.stringify({ event: 'duel', data: payload }));
-      this.logger.debug(
-        `WS duel data sent: duel=${duelId} users=${payload.users.length} (${Date.now() - t0}ms)`,
+      const msg = JSON.stringify({ event: 'duel', data: payload });
+      client.send(msg);
+      this.logger.log(
+        `[ws:send] event=duel duel=${duelId} remainingSeconds=${payload.remainingSeconds} users=${payload.users.length} positions=${payload.users.map((u: any) => u.positions?.length ?? 0).join(',')} (${Date.now() - t0}ms)`,
       );
     } catch (err) {
       this.logger.error(
@@ -180,8 +183,10 @@ export class PositionsGateway
 
       sub.started = true;
 
-      client.send(
-        JSON.stringify({ event: 'start', data: { message: 'start', duelId } }),
+      const startMsg = { event: 'start', data: { message: 'start', duelId } };
+      client.send(JSON.stringify(startMsg));
+      this.logger.log(
+        `[ws:send] event=start duel=${duelId}`,
       );
 
       this.logger.log(
@@ -190,8 +195,10 @@ export class PositionsGateway
       sub.startDelay = setTimeout(() => {
         sub.startDelay = null;
         if (client.readyState !== WebSocket.OPEN) return;
+        // Timer starts now — when positions actually begin flowing
+        sub.startedAt = Date.now();
         this.logger.log(
-          `[notifyDuelStart] duel=${duelId} — 3s elapsed, starting position data`,
+          `[notifyDuelStart] duel=${duelId} — 3s elapsed, starting position data (startedAt=${sub.startedAt})`,
         );
         this.startDuelDataInterval(client, sub);
       }, 3_000);
@@ -223,6 +230,7 @@ export class PositionsGateway
         client.send(
           JSON.stringify({ event: 'expired', data: 'Duel duration ended' }),
         );
+        this.logger.log(`[ws:send] event=expired duel=${duelId} reason=duration_ended`);
         this.clearSubscription(client);
         client.close();
         return;
