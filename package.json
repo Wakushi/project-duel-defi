@@ -29,6 +29,8 @@
     "@nestjs/websockets": "^11.1.18",
     "axios": "^1.14.0",
     "ethers": "^6.16.0",
+    "kysely": "^0.28.15",
+    "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "ws": "^8.20.0"
@@ -42,6 +44,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.20.0",
     "@types/supertest": "^7.0.0",
     "@types/ws": "^8.18.1",
     "eslint": "^9.18.0",
