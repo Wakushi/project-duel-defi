@@ -9,12 +9,12 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import WebSocket, { Server } from 'ws';
-import { Chains } from '../models/chains';
-import { GnsPositionService } from '../services/GnsPositionService';
+import { DatabaseService } from '../services/DatabaseService';
 
-interface Subscription {
-  chain: Chains;
-  user: string;
+interface DuelSubscription {
+  duelId: string;
+  durationSeconds: number;
+  startedAt: number;
   interval: ReturnType<typeof setInterval>;
   timeout: ReturnType<typeof setTimeout>;
 }
@@ -25,12 +25,12 @@ export class PositionsGateway
 {
   private readonly logger = new Logger(PositionsGateway.name);
   private readonly subscriptionTtl = 10 * 60 * 1_000; // 10 minutes
-  private subscriptions = new Map<WebSocket, Subscription>();
+  private subscriptions = new Map<WebSocket, DuelSubscription>();
 
   @WebSocketServer()
   server!: Server;
 
-  constructor(private readonly positionService: GnsPositionService) {}
+  constructor(private readonly databaseService: DatabaseService) {}
 
   handleConnection(client: WebSocket) {
     this.logger.log(
@@ -41,36 +41,59 @@ export class PositionsGateway
   handleDisconnect(client: WebSocket) {
     const sub = this.subscriptions.get(client);
     this.logger.log(
-      `WS client disconnected${sub ? ` (user=${sub.user} chain=${sub.chain})` : ''}`,
+      `WS client disconnected${sub ? ` (duel=${sub.duelId})` : ''}`,
     );
     this.clearSubscription(client);
   }
 
   @SubscribeMessage('subscribe')
-  handleSubscribe(
+  async handleSubscribe(
     @ConnectedSocket() client: WebSocket,
-    @MessageBody() data: { chain: Chains; user: string },
+    @MessageBody() data: { duelId: string },
   ) {
     this.clearSubscription(client);
 
-    const { chain, user } = data;
-    this.logger.log(`WS subscribe: user=${user} chain=${chain}`);
+    const { duelId } = data;
+    this.logger.log(`WS subscribe: duel=${duelId}`);
 
-    this.sendPositions(client, chain, user);
+    // Validate duel exists upfront
+    const duel = await this.databaseService.getDuelById(duelId);
+    if (!duel) {
+      client.send(
+        JSON.stringify({ event: 'error', data: `Duel ${duelId} not found` }),
+      );
+      return;
+    }
 
-    const interval = setInterval(() => {
+    const startedAt = Date.now();
+    const durationSeconds = duel.duration_seconds;
+
+    // Send initial data immediately
+    await this.sendDuelData(client, duelId, durationSeconds, startedAt);
+
+    const interval = setInterval(async () => {
       if (client.readyState !== WebSocket.OPEN) {
         this.clearSubscription(client);
         return;
       }
-      this.sendPositions(client, chain, user);
+
+      const remainingMs = durationSeconds * 1000 - (Date.now() - startedAt);
+      if (remainingMs <= 0) {
+        this.logger.log(`WS duel timer ended: duel=${duelId}`);
+        await this.sendDuelData(client, duelId, durationSeconds, startedAt);
+        client.send(
+          JSON.stringify({ event: 'expired', data: 'Duel duration ended' }),
+        );
+        this.clearSubscription(client);
+        client.close();
+        return;
+      }
+
+      await this.sendDuelData(client, duelId, durationSeconds, startedAt);
     }, 1_000);
 
-    // Auto-disconnect after TTL
     const timeout = setTimeout(() => {
-      this.logger.log(
-        `WS subscription expired: user=${user} chain=${chain}`,
-      );
+      this.logger.log(`WS subscription expired: duel=${duelId}`);
       client.send(
         JSON.stringify({ event: 'expired', data: 'Subscription TTL reached' }),
       );
@@ -78,35 +101,58 @@ export class PositionsGateway
       client.close();
     }, this.subscriptionTtl);
 
-    this.subscriptions.set(client, { chain, user, interval, timeout });
+    this.subscriptions.set(client, {
+      duelId,
+      durationSeconds,
+      startedAt,
+      interval,
+      timeout,
+    });
   }
 
   @SubscribeMessage('unsubscribe')
   handleUnsubscribe(@ConnectedSocket() client: WebSocket) {
     const sub = this.subscriptions.get(client);
-    this.logger.log(
-      `WS unsubscribe${sub ? `: user=${sub.user} chain=${sub.chain}` : ''}`,
-    );
+    this.logger.log(`WS unsubscribe${sub ? `: duel=${sub.duelId}` : ''}`);
     this.clearSubscription(client);
   }
 
-  private sendPositions(client: WebSocket, chain: Chains, user: string) {
+  private async sendDuelData(
+    client: WebSocket,
+    duelId: string,
+    durationSeconds: number,
+    startedAt: number,
+  ) {
     const t0 = Date.now();
     try {
-      const positions = this.positionService.getPositions({ chain, user });
-      client.send(JSON.stringify({ event: 'positions', data: positions }));
+      const elapsedMs = Date.now() - startedAt;
+      const remainingSeconds = Math.max(
+        0,
+        Math.round(durationSeconds - elapsedMs / 1000),
+      );
+
+      const payload = await this.databaseService.buildDuelPayload(
+        duelId,
+        remainingSeconds,
+      );
+
+      if (!payload) {
+        client.send(
+          JSON.stringify({ event: 'error', data: `Duel ${duelId} not found` }),
+        );
+        return;
+      }
+
+      client.send(JSON.stringify({ event: 'duel', data: payload }));
       this.logger.debug(
-        `WS positions sent: user=${user} chain=${chain} count=${positions.length} (${Date.now() - t0}ms)`,
+        `WS duel data sent: duel=${duelId} users=${payload.users.length} (${Date.now() - t0}ms)`,
       );
     } catch (err) {
       this.logger.error(
-        `WS sendPositions failed: user=${user} chain=${chain} (${Date.now() - t0}ms): ${err}`,
+        `WS sendDuelData failed: duel=${duelId} (${Date.now() - t0}ms): ${err}`,
       );
       client.send(
-        JSON.stringify({
-          event: 'error',
-          data: (err as Error).message,
-        }),
+        JSON.stringify({ event: 'error', data: (err as Error).message }),
       );
     }
   }
