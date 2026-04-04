@@ -85,7 +85,8 @@ export class GainsController {
 
       const topPairs = onlyCryptoPairs;
       const tokenSymbols = topPairs.map((t) => t.from);
-      const tokensMetadata = await this.mobulaService.getMultiData(tokenSymbols);
+      const tokensMetadata =
+        await this.mobulaService.getMultiData(tokenSymbols);
 
       const tMobula = Date.now();
       this.logger.log(
@@ -116,13 +117,15 @@ export class GainsController {
           price24hAgo: price24hAgo ?? null,
           percentChange,
           logo: metadata?.logo ?? null,
+          marketCap: metadata?.market_cap ?? 0,
         };
       });
 
       this.logger.log(
         `GET /gains/pairs?chain=${chain} -> ${enrichedPairs.length} pairs (${Date.now() - t0}ms)`,
       );
-      return enrichedPairs;
+
+      return enrichedPairs.sort((a, b) => b.marketCap - a.marketCap);
     } catch (err) {
       this.logger.error(
         `GET /gains/pairs?chain=${chain} failed (${Date.now() - t0}ms): ${err}`,
