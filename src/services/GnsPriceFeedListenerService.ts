@@ -1,3 +1,4 @@
+import axios from 'axios';
 import {
   Injectable,
   Logger,
@@ -6,6 +7,14 @@ import {
 } from '@nestjs/common';
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
+
+interface GnsPriceInitStruct {
+  time: number;
+  opens: number[];
+  highs: number[];
+  lows: number[];
+  closes: number[];
+}
 
 @Injectable()
 export class GnsPriceFeedListenerService
@@ -37,6 +46,7 @@ export class GnsPriceFeedListenerService
 
   private async init() {
     this.connect();
+    this.initPrices();
   }
 
   private async shutdown() {
@@ -49,6 +59,22 @@ export class GnsPriceFeedListenerService
     this.ws?.close();
 
     this.logger.log('Shut down');
+  }
+
+  private async initPrices() {
+    const url = 'https://backend-pricing.eu.gains.trade/charts';
+
+    try {
+      const response = await axios.get<GnsPriceInitStruct>(url);
+
+      for (let i = 0; i < response.data.closes.length; i++) {
+        this.priceMap.set(i, response.data.closes[i]);
+      }
+
+      this.logger.log('Initialized pairs prices');
+    } catch (error) {
+      this.handleAxiosError('Error refreshing current prices', error);
+    }
   }
 
   private connect() {
@@ -137,5 +163,24 @@ export class GnsPriceFeedListenerService
     const price24hAgo = this.priceMap24hAgo.get(pairIndex) ?? price;
     const percentChange = (price - price24hAgo) / price24hAgo;
     return { price, price24hAgo, percentChange };
+  }
+
+  private handleAxiosError(message: string, error: unknown) {
+    if (axios.isAxiosError(error)) {
+      this.logger.error(`🔴 ${message}: ${error.message}`);
+
+      if (error.response) {
+        const { status, data } = error.response;
+
+        this.logger.error(`Response status: ${status}`);
+        this.logger.error(`Response data: ${JSON.stringify(data)}`);
+      } else if (error.request) {
+        this.logger.error('No response received from server');
+      } else {
+        this.logger.error(`Request setup failed: ${error.message}`);
+      }
+    } else {
+      this.logger.error(`An unexpected error occurred: ${String(error)}`);
+    }
   }
 }

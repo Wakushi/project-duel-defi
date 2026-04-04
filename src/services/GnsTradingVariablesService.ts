@@ -9,8 +9,6 @@ import {
   GlobalTradingVariablesBackend,
   TradeContainer,
   TradeContainerBackend,
-  TradeType,
-  TransformedGlobalTrades,
   TransformedGlobalTradingVariables,
   transformGlobalTrades,
   transformGlobalTradingVariables,
@@ -68,9 +66,7 @@ export class GnsTradingVariablesService implements OnModuleInit {
     const { pairs, collaterals } = tv.globalTradingVariables;
 
     if (!pairs) {
-      this.logger.warn(
-        `getAllTraderPositions: no pairs for chain=${chain}`,
-      );
+      this.logger.warn(`getAllTraderPositions: no pairs for chain=${chain}`);
       return [];
     }
 
