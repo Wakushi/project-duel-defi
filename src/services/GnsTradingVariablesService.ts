@@ -240,8 +240,7 @@ export class GnsTradingVariablesService implements OnModuleInit {
       chain,
       trades.filter((t) => {
         const indexMatch = String(t.trade.index) === String(tradeIndex);
-        const userMatch =
-          getAddress(t.trade.user) === getAddress(user);
+        const userMatch = getAddress(t.trade.user) === getAddress(user);
         return !(indexMatch && userMatch);
       }),
     );
@@ -314,8 +313,7 @@ export class GnsTradingVariablesService implements OnModuleInit {
 
     pair.accFeeLong = pairBorrowingFees.accFeeLong;
     pair.accFeeShort = pairBorrowingFees.accFeeShort;
-    pair.accLastUpdatedBlock =
-      pairBorrowingFees.accLastUpdatedBlock.toString();
+    pair.accLastUpdatedBlock = pairBorrowingFees.accLastUpdatedBlock.toString();
 
     this.retransform(chain, backend);
   }
@@ -453,9 +451,7 @@ export class GnsTradingVariablesService implements OnModuleInit {
     if (!backend) return;
 
     const fundingPairData =
-      backend.collaterals[collateralIndex - 1]?.fundingFees.pairData[
-        pairIndex
-      ];
+      backend.collaterals[collateralIndex - 1]?.fundingFees.pairData[pairIndex];
     if (!fundingPairData) return;
 
     fundingPairData.accFundingFeeLongP = pairData.accFundingFeeLongP;

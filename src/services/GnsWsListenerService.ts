@@ -243,7 +243,12 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
     try {
       const duel =
         await this.databaseService.getActiveDuelByWallet(trader);
-      if (!duel) return;
+      if (!duel) {
+        this.logger.debug(
+          `[MarketExecuted] No active duel found for trader ${trader}`,
+        );
+        return;
+      }
 
       const duelId = duel.id;
 

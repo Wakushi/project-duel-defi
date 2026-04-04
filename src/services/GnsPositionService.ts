@@ -33,10 +33,6 @@ export class GnsPositionService {
       user,
     );
 
-    this.logger.debug(
-      `getPositions: found ${allUserTrades.length} raw trades for ${user} on ${chain}`,
-    );
-
     const enrichedTrades: any = [];
 
     allUserTrades.forEach((tradeC) => {
@@ -104,10 +100,6 @@ export class GnsPositionService {
       enrichedTrades.push(enrichedTrade);
     });
 
-    this.logger.log(
-      `getPositions: user=${user} chain=${chain} -> ${enrichedTrades.length} enriched trades (${Date.now() - t0}ms)`,
-    );
-
     return enrichedTrades;
   }
 
@@ -141,10 +133,6 @@ export class GnsPositionService {
       trade.openPrice,
       tradeInfo,
       pnlContext,
-    );
-
-    this.logger.debug(
-      `getPnl: pair=${tradeContainer.trade.pairIndex} pnl=${pnl.uPnlCollateral} pnl%=${pnl.uPnlPercent}`,
     );
 
     return { pnl, pnlContext };

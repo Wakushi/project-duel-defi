@@ -15,7 +15,8 @@ interface DuelSubscription {
   duelId: string;
   durationSeconds: number;
   startedAt: number;
-  interval: ReturnType<typeof setInterval>;
+  started: boolean;
+  interval: ReturnType<typeof setInterval> | null;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -32,7 +33,7 @@ export class PositionsGateway
 
   constructor(private readonly databaseService: DatabaseService) {}
 
-  handleConnection(client: WebSocket) {
+  handleConnection(_client: WebSocket) {
     this.logger.log(
       `WS client connected (active: ${this.subscriptions.size + 1})`,
     );
@@ -54,11 +55,12 @@ export class PositionsGateway
     this.clearSubscription(client);
 
     const { duelId } = data;
-    this.logger.log(`WS subscribe: duel=${duelId}`);
+    this.logger.log(`[subscribe] Client subscribed to duel=${duelId}`);
 
     // Validate duel exists upfront
     const duel = await this.databaseService.getDuelById(duelId);
     if (!duel) {
+      this.logger.warn(`[subscribe] Duel ${duelId} not found`);
       client.send(
         JSON.stringify({ event: 'error', data: `Duel ${duelId} not found` }),
       );
@@ -68,6 +70,7 @@ export class PositionsGateway
     const durationSeconds = duel.duration_seconds;
 
     if (!duel.ready_both_at) {
+      this.logger.warn(`[subscribe] Duel ${duelId} has not started yet`);
       client.send(
         JSON.stringify({
           event: 'error',
@@ -82,32 +85,8 @@ export class PositionsGateway
     const startedAt =
       new Date(duel.ready_both_at).getTime() + STARTING_DUEL_COUNT;
 
-    // Send initial data immediately
-    await this.sendDuelData(client, duelId, durationSeconds, startedAt);
-
-    const interval = setInterval(async () => {
-      if (client.readyState !== WebSocket.OPEN) {
-        this.clearSubscription(client);
-        return;
-      }
-
-      const remainingMs = durationSeconds * 1000 - (Date.now() - startedAt);
-      if (remainingMs <= 0) {
-        this.logger.log(`WS duel timer ended: duel=${duelId}`);
-        await this.sendDuelData(client, duelId, durationSeconds, startedAt);
-        client.send(
-          JSON.stringify({ event: 'expired', data: 'Duel duration ended' }),
-        );
-        this.clearSubscription(client);
-        client.close();
-        return;
-      }
-
-      await this.sendDuelData(client, duelId, durationSeconds, startedAt);
-    }, 1_000);
-
     const timeout = setTimeout(() => {
-      this.logger.log(`WS subscription expired: duel=${duelId}`);
+      this.logger.log(`[subscribe] Subscription TTL reached: duel=${duelId}`);
       client.send(
         JSON.stringify({ event: 'expired', data: 'Subscription TTL reached' }),
       );
@@ -115,11 +94,16 @@ export class PositionsGateway
       client.close();
     }, this.subscriptionTtl);
 
+    this.logger.log(
+      `[subscribe] Client registered for duel=${duelId}, waiting for start signal`,
+    );
+
     this.subscriptions.set(client, {
       duelId,
       durationSeconds,
       startedAt,
-      interval,
+      started: false,
+      interval: null,
       timeout,
     });
   }
@@ -172,19 +156,65 @@ export class PositionsGateway
   }
 
   notifyDuelStart(duelId: string) {
+    this.logger.log(
+      `[notifyDuelStart] Firing start for duel=${duelId}`,
+    );
+
+    let notified = 0;
+
     for (const [client, sub] of this.subscriptions.entries()) {
-      if (sub.duelId === duelId && client.readyState === WebSocket.OPEN) {
-        client.send(
-          JSON.stringify({ event: 'start', data: { message: 'start', duelId } }),
-        );
+      if (sub.duelId !== duelId || client.readyState !== WebSocket.OPEN) {
+        continue;
       }
+
+      sub.started = true;
+
+      client.send(
+        JSON.stringify({ event: 'start', data: { message: 'start', duelId } }),
+      );
+
+      // Kick off the periodic duel data interval now
+      this.startDuelDataInterval(client, sub);
+      notified++;
     }
+
+    this.logger.log(
+      `[notifyDuelStart] duel=${duelId} — notified ${notified} client(s)`,
+    );
+  }
+
+  private startDuelDataInterval(client: WebSocket, sub: DuelSubscription) {
+    const { duelId, durationSeconds, startedAt } = sub;
+
+    // Send initial data immediately
+    this.sendDuelData(client, duelId, durationSeconds, startedAt);
+
+    sub.interval = setInterval(async () => {
+      if (client.readyState !== WebSocket.OPEN) {
+        this.clearSubscription(client);
+        return;
+      }
+
+      const remainingMs = durationSeconds * 1000 - (Date.now() - startedAt);
+      if (remainingMs <= 0) {
+        this.logger.log(`[interval] Duel timer ended: duel=${duelId}`);
+        await this.sendDuelData(client, duelId, durationSeconds, startedAt);
+        client.send(
+          JSON.stringify({ event: 'expired', data: 'Duel duration ended' }),
+        );
+        this.clearSubscription(client);
+        client.close();
+        return;
+      }
+
+      await this.sendDuelData(client, duelId, durationSeconds, startedAt);
+    }, 1_000);
   }
 
   private clearSubscription(client: WebSocket) {
     const sub = this.subscriptions.get(client);
     if (sub) {
-      clearInterval(sub.interval);
+      if (sub.interval) clearInterval(sub.interval);
       clearTimeout(sub.timeout);
       this.subscriptions.delete(client);
     }
