@@ -226,10 +226,16 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private handleLiveEvent(chain: Chains, event: any): void {
+    if (event?.event === 'MarketOpenCanceled') {
+      console.log(`MarketOpenCanceled on ${chain}`);
+      console.log(event);
+    }
+
     if (event?.event !== 'MarketExecuted') return;
 
     const trader: string | undefined =
       event.returnValues?.user || event.returnValues?.trader;
+
     if (!trader) return;
 
     const open = event.returnValues?.open;
