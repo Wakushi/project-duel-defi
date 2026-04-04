@@ -94,18 +94,29 @@ export class PositionsGateway
       client.close();
     }, this.subscriptionTtl);
 
-    this.logger.log(
-      `[subscribe] Client registered for duel=${duelId}, waiting for start signal`,
-    );
+    const alreadyLive = !!duel.duel_live_at;
 
-    this.subscriptions.set(client, {
+    const sub: DuelSubscription = {
       duelId,
       durationSeconds,
       startedAt,
-      started: false,
+      started: alreadyLive,
       interval: null,
       timeout,
-    });
+    };
+
+    this.subscriptions.set(client, sub);
+
+    if (alreadyLive) {
+      this.logger.log(
+        `[subscribe] Duel ${duelId} already live (duel_live_at=${duel.duel_live_at}) — sending positions immediately`,
+      );
+      this.startDuelDataInterval(client, sub);
+    } else {
+      this.logger.log(
+        `[subscribe] Client registered for duel=${duelId}, waiting for start signal`,
+      );
+    }
   }
 
   @SubscribeMessage('unsubscribe')
