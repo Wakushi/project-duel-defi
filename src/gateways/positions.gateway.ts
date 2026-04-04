@@ -17,6 +17,7 @@ interface DuelSubscription {
   startedAt: number;
   started: boolean;
   interval: ReturnType<typeof setInterval> | null;
+  startDelay: ReturnType<typeof setTimeout> | null;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -102,6 +103,7 @@ export class PositionsGateway
       startedAt,
       started: alreadyLive,
       interval: null,
+      startDelay: null,
       timeout,
     };
 
@@ -167,9 +169,7 @@ export class PositionsGateway
   }
 
   notifyDuelStart(duelId: string) {
-    this.logger.log(
-      `[notifyDuelStart] Firing start for duel=${duelId}`,
-    );
+    this.logger.log(`[notifyDuelStart] Firing start for duel=${duelId}`);
 
     let notified = 0;
 
@@ -184,8 +184,18 @@ export class PositionsGateway
         JSON.stringify({ event: 'start', data: { message: 'start', duelId } }),
       );
 
-      // Kick off the periodic duel data interval now
-      this.startDuelDataInterval(client, sub);
+      this.logger.log(
+        `[notifyDuelStart] duel=${duelId} — delaying position data by 3s`,
+      );
+      sub.startDelay = setTimeout(() => {
+        sub.startDelay = null;
+        if (client.readyState !== WebSocket.OPEN) return;
+        this.logger.log(
+          `[notifyDuelStart] duel=${duelId} — 3s elapsed, starting position data`,
+        );
+        this.startDuelDataInterval(client, sub);
+      }, 3_000);
+
       notified++;
     }
 
@@ -226,6 +236,7 @@ export class PositionsGateway
     const sub = this.subscriptions.get(client);
     if (sub) {
       if (sub.interval) clearInterval(sub.interval);
+      if (sub.startDelay) clearTimeout(sub.startDelay);
       clearTimeout(sub.timeout);
       this.subscriptions.delete(client);
     }
