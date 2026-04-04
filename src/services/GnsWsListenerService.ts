@@ -232,17 +232,21 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
       event.returnValues?.user || event.returnValues?.trader;
     if (!trader) return;
 
+    const open = event.returnValues?.open;
+
     this.logger.log(
-      `[${chain}] MarketExecuted for trader ${trader}`,
+      `[${chain}] MarketExecuted for trader ${trader} (open=${open})`,
     );
+
+    if (!open) return;
 
     this.handleMarketExecutedForDuel(trader);
   }
 
   private async handleMarketExecutedForDuel(trader: string): Promise<void> {
     try {
-      const duel =
-        await this.databaseService.getActiveDuelByWallet(trader);
+      const duel = await this.databaseService.getActiveDuelByWallet(trader);
+
       if (!duel) {
         this.logger.debug(
           `[MarketExecuted] No active duel found for trader ${trader}`,
