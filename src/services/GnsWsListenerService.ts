@@ -109,7 +109,6 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
       }
 
       default:
-        this.logger.debug(`[${chain}] Unhandled event: ${msg.name}`);
         break;
     }
   }
