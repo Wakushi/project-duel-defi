@@ -14,6 +14,7 @@ import {
   transformGlobalTradingVariables,
   UserPriceImpact,
 } from '@gainsnetwork/sdk';
+import { getAddress } from 'ethers';
 
 const urlMap = new Map([
   [Chains.Base, 'https://backend-base.gains.trade/'],
@@ -199,6 +200,58 @@ export class GnsTradingVariablesService implements OnModuleInit {
       `getAllPairs: chain=${chain} -> ${filtered.length}/${pairs.length} active pairs (${Date.now() - t0}ms)`,
     );
     return filtered;
+  }
+
+  public createOrUpdateTrade(
+    chain: Chains,
+    tradeContainer: TradeContainerBackend,
+  ): void {
+    const trades = this.tradesByChain.get(chain);
+    if (!trades) return;
+
+    const existingIndex = trades.findIndex((t) => {
+      return (
+        t.trade.index === tradeContainer.trade.index &&
+        getAddress(t.trade.user) === getAddress(tradeContainer.trade.user)
+      );
+    });
+
+    if (existingIndex !== -1) {
+      trades[existingIndex] = tradeContainer;
+    } else {
+      trades.push(tradeContainer);
+    }
+
+    this.logger.log(
+      `[${chain}] ${existingIndex !== -1 ? 'Updated' : 'Registered'} trade #${tradeContainer.trade.index} for ${tradeContainer.trade.user}`,
+    );
+  }
+
+  public unregisterTrade(
+    chain: Chains,
+    tradeIndex: string,
+    user: string,
+  ): void {
+    const trades = this.tradesByChain.get(chain);
+    if (!trades) return;
+
+    const before = trades.length;
+    this.tradesByChain.set(
+      chain,
+      trades.filter((t) => {
+        const indexMatch = String(t.trade.index) === String(tradeIndex);
+        const userMatch =
+          getAddress(t.trade.user) === getAddress(user);
+        return !(indexMatch && userMatch);
+      }),
+    );
+
+    const after = this.tradesByChain.get(chain)!.length;
+    if (after < before) {
+      this.logger.log(
+        `[${chain}] Unregistered trade #${tradeIndex} for ${user}`,
+      );
+    }
   }
 
   public getPair(chain: Chains, index: number) {

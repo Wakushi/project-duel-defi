@@ -8,6 +8,7 @@ import { GnsPositionService } from './services/GnsPositionService';
 import { GnsTradingVariablesService } from './services/GnsTradingVariablesService';
 import { MobulaService } from './services/MobulaService';
 import { DatabaseService } from './services/DatabaseService';
+import { GnsWsListenerService } from './services/GnsWsListenerService';
 import { PositionsGateway } from './gateways/positions.gateway';
 import { ConfigModule } from '@nestjs/config';
 
@@ -21,6 +22,7 @@ import { ConfigModule } from '@nestjs/config';
     GnsTradingVariablesService,
     MobulaService,
     DatabaseService,
+    GnsWsListenerService,
     PositionsGateway,
   ],
 })
