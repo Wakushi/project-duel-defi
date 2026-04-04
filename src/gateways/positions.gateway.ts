@@ -171,6 +171,16 @@ export class PositionsGateway
     }
   }
 
+  notifyDuelStart(duelId: string) {
+    for (const [client, sub] of this.subscriptions.entries()) {
+      if (sub.duelId === duelId && client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({ event: 'start', data: { message: 'start', duelId } }),
+        );
+      }
+    }
+  }
+
   private clearSubscription(client: WebSocket) {
     const sub = this.subscriptions.get(client);
     if (sub) {

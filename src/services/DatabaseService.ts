@@ -43,6 +43,23 @@ export class DatabaseService implements OnModuleDestroy {
       .executeTakeFirst();
   }
 
+  async getActiveDuelByWallet(wallet: string) {
+    return this.db
+      .selectFrom('duels')
+      .innerJoin('users as creator', 'creator.id', 'duels.creator_id')
+      .leftJoin('users as opponent', 'opponent.id', 'duels.opponent_id')
+      .selectAll('duels')
+      .where('duels.ready_both_at', 'is not', null)
+      .where((eb) =>
+        eb.or([
+          eb('creator.wallet_address', '=', wallet),
+          eb('opponent.wallet_address', '=', wallet),
+        ]),
+      )
+      .orderBy('duels.ready_both_at', 'desc')
+      .executeTakeFirst();
+  }
+
   async buildDuelPayload(duelId: string, remainingSeconds: number) {
     const duel = await this.getDuelById(duelId);
     if (!duel) return null;

@@ -7,6 +7,8 @@ import {
 import WebSocket from 'ws';
 import { Chains } from '../models/chains.js';
 import { GnsTradingVariablesService } from './GnsTradingVariablesService.js';
+import { DatabaseService } from './DatabaseService.js';
+import { PositionsGateway } from '../gateways/positions.gateway.js';
 import {
   GlobalTradingVariablesBackend,
   TradeContainerBackend,
@@ -28,8 +30,14 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
   >();
   private isShuttingDown = false;
 
+  // Tracks which wallets have had their MarketExecuted event received per duel
+  // Key: duelId, Value: Set of wallet addresses that have been executed
+  private readonly duelExecutedWallets = new Map<string, Set<string>>();
+
   constructor(
     private readonly tradingVariablesService: GnsTradingVariablesService,
+    private readonly databaseService: DatabaseService,
+    private readonly positionsGateway: PositionsGateway,
   ) {}
 
   onModuleInit() {
@@ -207,8 +215,59 @@ export class GnsWsListenerService implements OnModuleInit, OnModuleDestroy {
         break;
       }
 
+      case 'liveEvent': {
+        this.handleLiveEvent(chain, msg.value);
+        break;
+      }
+
       default:
         break;
+    }
+  }
+
+  private handleLiveEvent(chain: Chains, event: any): void {
+    if (event?.event !== 'MarketExecuted') return;
+
+    const trader: string | undefined =
+      event.returnValues?.user || event.returnValues?.trader;
+    if (!trader) return;
+
+    this.logger.log(
+      `[${chain}] MarketExecuted for trader ${trader}`,
+    );
+
+    this.handleMarketExecutedForDuel(trader);
+  }
+
+  private async handleMarketExecutedForDuel(trader: string): Promise<void> {
+    try {
+      const duel =
+        await this.databaseService.getActiveDuelByWallet(trader);
+      if (!duel) return;
+
+      const duelId = duel.id;
+
+      let executed = this.duelExecutedWallets.get(duelId);
+      if (!executed) {
+        executed = new Set<string>();
+        this.duelExecutedWallets.set(duelId, executed);
+      }
+
+      executed.add(trader.toLowerCase());
+
+      this.logger.log(
+        `[Duel ${duelId}] MarketExecuted received for ${trader} (${executed.size}/2)`,
+      );
+
+      if (executed.size >= 2) {
+        this.logger.log(
+          `[Duel ${duelId}] Both MarketExecuted received — notifying clients`,
+        );
+        this.positionsGateway.notifyDuelStart(duelId);
+        this.duelExecutedWallets.delete(duelId);
+      }
+    } catch (err) {
+      this.logger.error(`handleMarketExecutedForDuel failed: ${err}`);
     }
   }
 
